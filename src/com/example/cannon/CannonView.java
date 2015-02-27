@@ -1,7 +1,6 @@
 // CannonView.java
 // Displays and controls the Cannon Game
 package com.example.cannon;
-
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.Dialog;
@@ -32,15 +31,19 @@ public class CannonView extends SurfaceView
    private boolean dialogIsDisplayed = false;   
                
    // constants for game play
-   public static final int TARGET_PIECES = 7; // sections in the target
+   public static int TARGET_PIECES = 1; // sections in the target
    public static final int MISS_PENALTY = 2; // seconds deducted on a miss
    public static final int HIT_REWARD = 3; // seconds added on a hit
-
+   public static int STAGES = 1;
+   
    // variables for the game loop and tracking statistics
    private boolean gameOver; // is the game over?
    private double timeLeft; // time remaining in seconds
    private int shotsFired; // shots the user has fired
    private double totalElapsedTime; // elapsed seconds 
+   private int score = 0;
+   private static int newHighScore = 0;
+   
 
    // variables for the blocker and target
    private Line blocker; // start and end points of the blocker
@@ -180,6 +183,43 @@ public class CannonView extends SurfaceView
    // reset all the screen elements and start a new game
    public void newGame()
    {
+	   score = 0;
+	   STAGES = 1;
+	   TARGET_PIECES = STAGES;
+	   hitStates = new boolean[TARGET_PIECES];
+      // set every element of hitStates to false--restores target pieces
+      for (int i = 0; i < TARGET_PIECES; i++)
+         hitStates[i] = false;
+
+      targetPiecesHit = 0; // no target pieces have been hit
+      blockerVelocity = initialBlockerVelocity; // set initial velocity
+      targetVelocity = initialTargetVelocity; // set initial velocity
+      timeLeft = 10; // start the countdown at 10 seconds
+      cannonballOnScreen = false; // the cannonball is not on the screen
+      shotsFired = 0; // set the initial number of shots fired
+      totalElapsedTime = 0.0; // set the time elapsed to zero
+      
+      // set the start and end Points of the blocker and target
+      blocker.start.set(blockerDistance, blockerBeginning);
+      blocker.end.set(blockerDistance, blockerEnd);
+      target.start.set(targetDistance, targetBeginning);
+      target.end.set(targetDistance, targetEnd);
+      
+      if (gameOver) // starting a new game after the last game ended
+      {
+         gameOver = false; 
+         cannonThread = new CannonThread(getHolder()); // create thread
+         cannonThread.start(); // start the game loop thread
+      } 
+   } // end method newGame
+
+   public void nextLevel()
+   {
+	  
+	   STAGES = STAGES+1;
+	   TARGET_PIECES = STAGES;
+	   hitStates = new boolean[TARGET_PIECES];
+	   pieceLength = (targetEnd - targetBeginning) / TARGET_PIECES;
       // set every element of hitStates to false--restores target pieces
       for (int i = 0; i < TARGET_PIECES; i++)
          hitStates[i] = false;
@@ -225,6 +265,13 @@ public class CannonView extends SurfaceView
          {
             cannonballVelocityX *= -1; // reverse cannonball's direction
             timeLeft -= MISS_PENALTY; // penalize the user
+         
+            if(score < (15 * STAGES)){
+            	score = 0;
+            }
+            else{
+            	score = score - (15 * STAGES);
+            }
 
             // play blocker sound
             soundPool.play(soundMap.get(BLOCKER_SOUND_ID), 1, 1, 1, 0, 1f);
@@ -247,6 +294,7 @@ public class CannonView extends SurfaceView
             cannonball.y + cannonballRadius > target.start.y &&
             cannonball.y - cannonballRadius < target.end.y)
          {
+        	 score = score + (10 * STAGES);
             // determine target section number (0 is the top)
             int section = 
                (int) ((cannonball.y - target.start.y) / pieceLength);
@@ -366,7 +414,10 @@ public class CannonView extends SurfaceView
       // display time remaining
       canvas.drawText(getResources().getString(
          R.string.time_remaining_format, timeLeft), 30, 50, textPaint);
-
+      
+      canvas.drawText(getResources().getString(
+ 	         R.string.high_score_saved, newHighScore), 30, 100, textPaint);
+      
       // if a cannonball is currently on the screen, draw it
       if (cannonballOnScreen)
          canvas.drawCircle(cannonball.x, cannonball.y, cannonballRadius,
@@ -426,10 +477,34 @@ public class CannonView extends SurfaceView
                AlertDialog.Builder builder = 
                   new AlertDialog.Builder(getActivity());
                builder.setTitle(getResources().getString(messageId));
-
+               String msg = getString(messageId);
+               if(msg.equalsIgnoreCase("You win!") && STAGES <= 9){
+            	   builder.setMessage(getResources().getString(
+                           R.string.results_format, shotsFired, totalElapsedTime, score));
+                        builder.setPositiveButton(R.string.next_level,
+                           new DialogInterface.OnClickListener()
+                           {
+                              // called when "Reset Game" Button is pressed
+                              @Override
+                              public void onClick(DialogInterface dialog, int which)
+                              {
+                                 dialogIsDisplayed = false;
+                                 nextLevel(); // set up and start a new game
+                              } 
+                           } // end anonymous inner class
+                        ); // end call to setPositiveButton
+                        
+                        return builder.create(); // return the AlertDialog
+                            	   
+               }
+               else{
+            	   if(newHighScore < score){
+            		   newHighScore = score;
+            	   }
+            	
                // display number of shots fired and total time elapsed
                builder.setMessage(getResources().getString(
-                  R.string.results_format, shotsFired, totalElapsedTime));
+                  R.string.results_format, shotsFired, totalElapsedTime, score));
                builder.setPositiveButton(R.string.reset_game,
                   new DialogInterface.OnClickListener()
                   {
@@ -444,7 +519,8 @@ public class CannonView extends SurfaceView
                ); // end call to setPositiveButton
                
                return builder.create(); // return the AlertDialog
-            } // end method onCreateDialog   
+            } // end method onCreateDialog 
+            }
          }; // end DialogFragment anonymous inner class
       
       // in GUI thread, use FragmentManager to display the DialogFragment
@@ -587,16 +663,3 @@ public class CannonView extends SurfaceView
       } // end method run
    } // end nested class CannonThread
 } // end class CannonView
-
-/*********************************************************************************
- * (C) Copyright 1992-2014 by Deitel & Associates, Inc. and * Pearson Education, *
- * Inc. All Rights Reserved. * * DISCLAIMER: The authors and publisher of this   *
- * book have used their * best efforts in preparing the book. These efforts      *
- * include the * development, research, and testing of the theories and programs *
- * * to determine their effectiveness. The authors and publisher make * no       *
- * warranty of any kind, expressed or implied, with regard to these * programs   *
- * or to the documentation contained in these books. The authors * and publisher *
- * shall not be liable in any event for incidental or * consequential damages in *
- * connection with, or arising out of, the * furnishing, performance, or use of  *
- * these programs.                                                               *
- *********************************************************************************/
